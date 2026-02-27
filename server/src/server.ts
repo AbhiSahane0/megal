@@ -16,7 +16,7 @@ const io = new Server(server, {
 
 CreateSocketConnection(io);
 
-server.listen(3000, () => {
+server.listen(process.env.PORT || 3000, () => {
   console.log("Server listening on port 3000");
 });
 
