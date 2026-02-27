@@ -1,0 +1,26 @@
+{
+  "name": "megal",
+  "version": "1.0.0",
+  "description": "This is megal v1",
+  "license": "ISC",
+  "author": "Abhijit",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "cross-env NODE_ENV=development tsx watch src/server.ts",
+    "build": "tsc",
+    "start:prod": "cross-env NODE_ENV=production tsx watch src/server.ts",
+    "debug": "tsx --inspect-brk src/server.ts",
+    "dev": "cross-env NODE_ENV=development tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "cross-env": "^10.1.0",
+    "tsx": "^4.21.0"
+  }
+}
