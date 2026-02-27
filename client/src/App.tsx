@@ -3,7 +3,7 @@ import { toast } from "react-toastify";
 import { io } from "socket.io-client";
 import StartChat from "./components/StartChat";
 
-const socket = io(`http://${window.location.hostname}:3000`);
+const socket = io(`https://megal-pvcj.onrender.com`);
 
 const LiveStatus = ({ isLive }: { isLive: boolean }) => {
   return (

@@ -8,7 +8,7 @@ const server = createServer(app);
 // creating new socket.io server
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "https://megal-pvcj.onrender.com",
     methods: ["GET,HEAD,PUT,PATCH,POST,DELETE"],
     // credentials: true,
   },
