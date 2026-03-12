@@ -3,8 +3,13 @@ import { toast } from "react-toastify";
 import { io } from "socket.io-client";
 import StartChat from "./components/StartChat";
 
-const socket = io(`https://megal-pvcj.onrender.com`);
+let url = "https://megal-pvcj.onrender.com";
 
+if (import.meta.env.DEV) {
+  url = `http://${window.location.hostname}:3000`;
+}
+
+const socket = io(url);
 const LiveStatus = ({ isLive }: { isLive: boolean }) => {
   return (
     <div
@@ -50,6 +55,13 @@ const App = () => {
     socket.on("chat", (msg) =>
       setChat((prev) => [...prev, { msg: msg, from: "stranger" }]),
     );
+
+    socket.on("MatchDisconnect", () => {
+      toast("User left 🥲. Finding new match.", {
+        type: "error",
+        position: "top-center",
+      });
+    });
   }, [isChatStarted]);
 
   const handleMessageSubmit = () => {

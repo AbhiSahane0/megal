@@ -8,7 +8,13 @@ createRoot(document.getElementById("root")!).render(
   // <StrictMode>
   <>
     <App />
-    <ToastContainer />
+    <ToastContainer
+      style={{
+        padding: "10px",
+        justifyItems: "center",
+        alignItems: "center",
+      }}
+    />
   </>,
   // {/* </StrictMode>, */}
 );
