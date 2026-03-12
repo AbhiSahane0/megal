@@ -42,6 +42,7 @@ export const CreateSocketConnection = (
       const disconnectedUserId = socket.id;
       const matchUserId = getMatch(socket.id);
       io.to(matchUserId!).emit("match", null);
+      io.to(matchUserId!).emit("MatchDisconnect");
 
       io.emit("liveUserCount", getLiveUsersCount());
       if (!matchUserId) return;

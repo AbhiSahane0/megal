@@ -6,9 +6,15 @@ import { CreateSocketConnection } from "./socket.io/CreateSocketConnection";
 const server = createServer(app);
 
 // creating new socket.io server
+let origin =
+  process.env.NODE_ENV === "development"
+    ? "*"
+    : "https://megal-seven.vercel.app";
+
 const io = new Server(server, {
   cors: {
-    origin: "https://megal-seven.vercel.app",
+    origin: origin,
+
     methods: ["GET,HEAD,PUT,PATCH,POST,DELETE"],
     // credentials: true,
   },
