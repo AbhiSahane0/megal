@@ -32,11 +32,13 @@ const App = () => {
   const [liveUsersCount, setLiveUsersCount] = useState<number>(0);
   // State for current users id
   // const [myId, setMyId] = useState<string>("");
-  const [matchedUserId, setMatchedUserId] = useState<string>("");
+  const [matchedUserId, setMatchedUserId] = useState<string | null>(null);
 
   const [msg, setMsg] = useState<string>("");
   const [chat, setChat] = useState<chatType[]>([]);
   const [isChatStarted, setIsChatStarted] = useState<boolean>(false);
+
+  console.log(matchedUserId);
 
   useEffect(() => {
     if (isChatStarted) return;
@@ -156,15 +158,17 @@ const App = () => {
                 <input
                   type="text"
                   placeholder="Type a message..."
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-200"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-200 disabled:cursor-not-allowed"
                   value={msg}
                   onChange={(e) => setMsg(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  disabled={!matchedUserId}
                 />
 
                 <button
-                  className="w-full rounded-xl bg-sky-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-sky-500 active:scale-[0.98] sm:w-auto cursor-pointer"
+                  className="w-full rounded-xl bg-sky-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-sky-500 active:scale-[0.98] sm:w-auto cursor-pointer disabled:cursor-not-allowed"
                   onClick={handleMessageSubmit}
+                  disabled={!matchedUserId || msg === ""}
                 >
                   Send
                 </button>
