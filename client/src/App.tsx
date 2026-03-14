@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { io } from "socket.io-client";
 import StartChat from "./components/StartChat";
+import useUserName from "./store/userName/useUserName";
 
 let url = "https://megal-pvcj.onrender.com";
 
@@ -30,26 +31,26 @@ type chatType = { msg: string; from: "me" | "stranger" };
 
 const App = () => {
   const [liveUsersCount, setLiveUsersCount] = useState<number>(0);
-  // State for current users id
   // const [myId, setMyId] = useState<string>("");
   const [matchedUserId, setMatchedUserId] = useState<string | null>(null);
 
   const [msg, setMsg] = useState<string>("");
   const [chat, setChat] = useState<chatType[]>([]);
   const [isChatStarted, setIsChatStarted] = useState<boolean>(false);
+  const [matchedUserUserName,setMatchedUserUserName] = useState('Stranger');
 
-  console.log(matchedUserId);
+  const userName = useUserName(state=>state.userName)
 
   useEffect(() => {
     if (isChatStarted) return;
 
     socket.on("liveUserCount", (count) => setLiveUsersCount(count));
 
-    // current users ID if required
     // socket.on("me", (id) => setMyId(id));
 
-    socket.on("match", (id) => {
+    socket.on("match", (id,userName) => {
       setMatchedUserId(id);
+      setMatchedUserUserName(userName)
       setChat([]);
       if (!id) return;
       toast("You got new match", { type: "success", position: "top-center" });
@@ -89,9 +90,14 @@ const App = () => {
   };
 
   const handleStartChat = () => {
-    socket.emit("findPair");
+    socket.emit("join",userName);
     setIsChatStarted(true);
   };
+
+  const handleChatStop = () => {
+    socket.emit('stop');
+    setIsChatStarted(false)
+  }
 
   return (
     <>
@@ -116,7 +122,7 @@ const App = () => {
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-sm text-slate-500">Matched user</p>
                   <p className="max-w-65 truncate font-mono text-sm text-slate-800">
-                    {matchedUserId ? matchedUserId : "Finding someone..."}
+                    {matchedUserId ? matchedUserUserName : "Finding someone..."}
                   </p>
                 </div>
               </div>
@@ -171,6 +177,12 @@ const App = () => {
                   disabled={!matchedUserId || msg === ""}
                 >
                   Send
+                </button>
+                <button
+                  className="w-full rounded-xl bg-red-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-red-500 active:scale-[0.98] sm:w-auto cursor-pointer disabled:cursor-not-allowed"
+                  onClick={handleChatStop}
+                >
+                  Stop
                 </button>
               </div>
             </div>
