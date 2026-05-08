@@ -12,7 +12,11 @@ import {
 import { toast } from "react-toastify";
 import StartChat from "./components/StartChat";
 import { socket } from "./lib/socket";
-import { mediaConstraints, peerConnectionConfig } from "./lib/webrtc";
+import {
+  mediaConstraints,
+  peerConnectionConfig,
+  stunOnlyPeerConnectionConfig,
+} from "./lib/webrtc";
 import useUserName from "./store/userName/useUserName";
 import type { ChatMessage } from "./types/chat";
 
@@ -167,7 +171,18 @@ const App = () => {
       cleanupPeerConnection();
       setCallStatus("connecting");
 
-      const pc = new RTCPeerConnection(peerConnectionConfig);
+      let pc: RTCPeerConnection;
+
+      try {
+        pc = new RTCPeerConnection(peerConnectionConfig);
+      } catch (error) {
+        console.error("RTCPeerConnection config failed. Falling back to STUN.", {
+          error,
+          peerConnectionConfig,
+        });
+        pc = new RTCPeerConnection(stunOnlyPeerConnectionConfig);
+      }
+
       const remoteStream = new MediaStream();
       const localStream = localStreamRef.current;
 
@@ -240,7 +255,8 @@ const App = () => {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         socket.emit("video-offer", { to: remoteUserId, offer });
-      } catch {
+      } catch (error) {
+        console.error("Could not start video call.", error);
         setCallStatus("failed");
         toast("Could not start video call.", {
           type: "error",
@@ -313,7 +329,8 @@ const App = () => {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit("video-answer", { to: from, answer });
-      } catch {
+      } catch (error) {
+        console.error("Could not answer video call.", error);
         setCallStatus("failed");
       }
     };
@@ -333,7 +350,8 @@ const App = () => {
           await pc.setRemoteDescription(answer);
           await flushPendingIceCandidates();
         }
-      } catch {
+      } catch (error) {
+        console.error("Could not apply video answer.", error);
         setCallStatus("failed");
       }
     };
@@ -355,7 +373,8 @@ const App = () => {
 
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch {
+      } catch (error) {
+        console.error("Could not add ICE candidate.", error);
         setCallStatus("failed");
       }
     };

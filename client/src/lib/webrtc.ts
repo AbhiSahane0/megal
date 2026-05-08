@@ -1,4 +1,4 @@
-const stunServers: RTCIceServer[] = [
+export const stunServers: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
@@ -8,16 +8,25 @@ const turnUrls = String(import.meta.env.VITE_TURN_URLS || "")
   .map((url: string) => url.trim())
   .filter(Boolean);
 
-const turnServer: RTCIceServer | null = turnUrls?.length
+const turnUsername = String(import.meta.env.VITE_TURN_USERNAME || "").trim();
+const turnCredential = String(import.meta.env.VITE_TURN_CREDENTIAL || "").trim();
+const hasCompleteTurnConfig =
+  turnUrls.length > 0 && turnUsername.length > 0 && turnCredential.length > 0;
+
+const turnServer: RTCIceServer | null = hasCompleteTurnConfig
   ? {
       urls: turnUrls,
-      username: import.meta.env.VITE_TURN_USERNAME,
-      credential: import.meta.env.VITE_TURN_CREDENTIAL,
+      username: turnUsername,
+      credential: turnCredential,
     }
   : null;
 
 export const peerConnectionConfig: RTCConfiguration = {
   iceServers: turnServer ? [...stunServers, turnServer] : stunServers,
+};
+
+export const stunOnlyPeerConnectionConfig: RTCConfiguration = {
+  iceServers: stunServers,
 };
 
 export const mediaConstraints: MediaStreamConstraints = {
