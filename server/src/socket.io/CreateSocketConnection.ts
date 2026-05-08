@@ -33,6 +33,9 @@ type ClientToServerEvents = {
   join: (userName: string) => void;
   message: (data: { message: string; to: string }) => void;
   stop: () => void;
+  skip: () => void;
+  "leave-match": () => void;
+  "leave-queue": () => void;
   "video-offer": (data: { to: string; offer: SignalDescription }) => void;
   "video-answer": (data: { to: string; answer: SignalDescription }) => void;
   "ice-candidate": (data: { to: string; candidate: IceCandidate }) => void;
@@ -61,11 +64,52 @@ export const CreateSocketConnection = (
     io.to(user2).emit("match", user1, getMappedUserName({ id: user1 }), false);
   };
 
-  const matchWaitingUser = (id: string) => {
-    const match = matchUser(id);
+  const matchWaitingUser = (id: string, blockedId?: string) => {
+    const match = matchUser(id, blockedId);
     if (!match) return;
 
     emitMatch(match.user1, match.user2);
+  };
+
+  const clearMatch = (socketId: string) => {
+    const matchedUserId = getMatch(socketId);
+    removeUserFromMatch(socketId);
+
+    if (matchedUserId) {
+      removeUserFromMatch(matchedUserId);
+    }
+
+    return matchedUserId;
+  };
+
+  const leaveCurrentMatch = ({
+    socketId,
+    requeueSelf,
+    requeueMatchedUser,
+    notifyMatchedUser,
+  }: {
+    socketId: string;
+    requeueSelf: boolean;
+    requeueMatchedUser: boolean;
+    notifyMatchedUser: boolean;
+  }) => {
+    removeUserFromWaitingQueue(socketId);
+
+    const matchedUserId = clearMatch(socketId);
+    if (!matchedUserId) return;
+
+    if (notifyMatchedUser) {
+      io.to(matchedUserId).emit("match", null);
+      io.to(matchedUserId).emit("MatchDisconnect");
+    }
+
+    if (requeueSelf) {
+      matchWaitingUser(socketId, matchedUserId);
+    }
+
+    if (requeueMatchedUser) {
+      matchWaitingUser(matchedUserId, socketId);
+    }
   };
 
   const endUserSession = (socketId: string) => {
@@ -73,13 +117,11 @@ export const CreateSocketConnection = (
     removeUserFromWaitingQueue(socketId);
     removeUsernameMapping({ id: socketId });
 
-    const matchedUserId = getMatch(socketId);
-    removeUserFromMatch(socketId);
+    const matchedUserId = clearMatch(socketId);
     emitLiveUserCount();
 
     if (!matchedUserId) return;
 
-    removeUserFromMatch(matchedUserId);
     io.to(matchedUserId).emit("match", null);
     io.to(matchedUserId).emit("MatchDisconnect");
     matchWaitingUser(matchedUserId);
@@ -127,6 +169,28 @@ export const CreateSocketConnection = (
 
     socket.on("stop", () => {
       endUserSession(socket.id);
+    });
+
+    socket.on("skip", () => {
+      leaveCurrentMatch({
+        socketId: socket.id,
+        requeueSelf: true,
+        requeueMatchedUser: true,
+        notifyMatchedUser: true,
+      });
+    });
+
+    socket.on("leave-match", () => {
+      leaveCurrentMatch({
+        socketId: socket.id,
+        requeueSelf: false,
+        requeueMatchedUser: true,
+        notifyMatchedUser: true,
+      });
+    });
+
+    socket.on("leave-queue", () => {
+      removeUserFromWaitingQueue(socket.id);
     });
 
     // emit an event of live users updated count when new user connects

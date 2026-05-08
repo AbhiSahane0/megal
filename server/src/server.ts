@@ -1,13 +1,16 @@
+import "dotenv/config";
 import app from "./app";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { CreateSocketConnection } from "./socket.io/CreateSocketConnection";
 
 const port = process.env.PORT || 3000;
+const configuredOrigins = process.env.CLIENT_ORIGIN?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const allowedOrigin =
-  process.env.NODE_ENV === "development"
-    ? "*"
-    : process.env.CLIENT_ORIGIN || "https://megal-seven.vercel.app";
+  process.env.NODE_ENV === "development" ? "*" : configuredOrigins;
 
 // creating new server
 const server = createServer(app);

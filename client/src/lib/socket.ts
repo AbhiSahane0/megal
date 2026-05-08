@@ -15,6 +15,9 @@ type ClientToServerEvents = {
   join: (userName: string) => void;
   message: (data: { message: string; to: string }) => void;
   stop: () => void;
+  skip: () => void;
+  "leave-match": () => void;
+  "leave-queue": () => void;
   "video-offer": (data: { to: string; offer: RTCSessionDescriptionInit }) => void;
   "video-answer": (data: { to: string; answer: RTCSessionDescriptionInit }) => void;
   "ice-candidate": (data: { to: string; candidate: RTCIceCandidateInit }) => void;
@@ -22,10 +25,10 @@ type ClientToServerEvents = {
 
 const getSocketUrl = () => {
   if (import.meta.env.DEV) {
-    return `http://${window.location.hostname}:3000`;
+    return window.location.origin;
   }
 
-  return "https://megal-pvcj.onrender.com";
+  return import.meta.env.VITE_SOCKET_URL || window.location.origin;
 };
 
 export const socket: Socket<ServerToClientEvents, ClientToServerEvents> =

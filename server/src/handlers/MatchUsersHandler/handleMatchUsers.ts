@@ -1,20 +1,15 @@
 import {
   addUserToWaitingQueue,
   getUserFromWaitingQueue,
-  getWaitingUsersCount,
   removeUserFromWaitingQueue,
 } from "../WaitingUsersQueueHandler/handleWaitingQueue";
 
 const matchedUsers = new Map<string, string>();
 
-export const matchUser = (id: string) => {
+export const matchUser = (id: string, blockedId?: string) => {
   addUserToWaitingQueue(id);
 
-  if (getWaitingUsersCount() <= 1) {
-    return null;
-  }
-
-  const users = getUserFromWaitingQueue();
+  const users = getUserFromWaitingQueue(id, blockedId);
 
   if (!users) return null;
 

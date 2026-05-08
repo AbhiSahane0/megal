@@ -7,9 +7,9 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "cross-env NODE_ENV=development tsx watch src/server.ts",
+    "start": "node dist/server.js",
     "build": "tsc",
-    "start:prod": "cross-env NODE_ENV=production tsx watch src/server.ts",
+    "start:prod": "node dist/server.js",
     "debug": "tsx --inspect-brk src/server.ts",
     "dev": "cross-env NODE_ENV=development tsx watch src/server.ts"
   },

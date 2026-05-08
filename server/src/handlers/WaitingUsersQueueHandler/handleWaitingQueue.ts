@@ -15,9 +15,13 @@ export const removeUserFromWaitingQueue = (user1: string, user2?: string) => {
   );
 };
 
-export const getUserFromWaitingQueue = () => {
-  if (waitingUsersQueue.length < 2) return null;
-  return { user1: waitingUsersQueue[0], user2: waitingUsersQueue[1] };
+export const getUserFromWaitingQueue = (id: string, blockedId?: string) => {
+  const matchedUser = waitingUsersQueue.find(
+    (item) => item !== id && item !== blockedId,
+  );
+
+  if (!matchedUser) return null;
+  return { user1: id, user2: matchedUser };
 };
 
 export const printWaitingUsers = () => {

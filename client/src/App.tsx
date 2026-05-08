@@ -45,9 +45,11 @@ const App = () => {
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [hasLocalMedia, setHasLocalMedia] = useState(false);
   const [hasRemoteMedia, setHasRemoteMedia] = useState(false);
+  const [isRequestingMedia, setIsRequestingMedia] = useState(false);
   const [isMicEnabled, setIsMicEnabled] = useState(true);
   const [isCameraEnabled, setIsCameraEnabled] = useState(true);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const isSecureContext = window.isSecureContext;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -57,6 +59,7 @@ const App = () => {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const matchedUserIdRef = useRef<string | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const mediaRequestRef = useRef<Promise<void> | null>(null);
   const userName = useUserName((state) => state.userName);
 
   const canSend = useMemo(
@@ -80,6 +83,7 @@ const App = () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     setHasLocalMedia(false);
+    setIsRequestingMedia(false);
 
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
@@ -88,27 +92,60 @@ const App = () => {
 
   const prepareLocalMedia = useCallback(async () => {
     if (localStreamRef.current) return;
+    if (mediaRequestRef.current) return mediaRequestRef.current;
 
-    try {
-      const stream =
-        await navigator.mediaDevices.getUserMedia(mediaConstraints);
-      localStreamRef.current = stream;
-      setHasLocalMedia(true);
+    const requestMedia = async () => {
+      setIsRequestingMedia(true);
       setMediaError(null);
-      setIsMicEnabled(true);
-      setIsCameraEnabled(true);
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+      try {
+        if (!window.isSecureContext) {
+          throw new Error("Camera and microphone require a secure origin.");
+        }
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Media devices are not supported.");
+        }
+
+        const stream =
+          await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        const hasAudio = stream.getAudioTracks().length > 0;
+        const hasVideo = stream.getVideoTracks().length > 0;
+
+        if (!hasAudio || !hasVideo) {
+          stream.getTracks().forEach((track) => track.stop());
+          throw new Error("Camera and microphone are required.");
+        }
+
+        localStreamRef.current = stream;
+        setHasLocalMedia(true);
+        setIsMicEnabled(true);
+        setIsCameraEnabled(true);
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error &&
+          error.message.includes("secure origin")
+            ? "Use HTTPS or localhost to enable camera and microphone."
+            : "Allow camera and microphone to start.";
+
+        setMediaError(message);
+        setHasLocalMedia(false);
+        toast(message, {
+          type: "warning",
+          position: "top-center",
+        });
+      } finally {
+        setIsRequestingMedia(false);
+        mediaRequestRef.current = null;
       }
-    } catch {
-      setMediaError("Camera or microphone is unavailable.");
-      setHasLocalMedia(false);
-      toast("Camera or microphone is unavailable.", {
-        type: "warning",
-        position: "top-center",
-      });
-    }
+    };
+
+    mediaRequestRef.current = requestMedia();
+    return mediaRequestRef.current;
   }, []);
 
   const flushPendingIceCandidates = useCallback(async () => {
@@ -370,24 +407,56 @@ const App = () => {
   };
 
   const handleStartChat = async () => {
+    if (!hasLocalMedia) {
+      await prepareLocalMedia();
+    }
+
+    if (!localStreamRef.current) return;
+
     setIsChatStarted(true);
     setCallStatus("searching");
-    await prepareLocalMedia();
     socket.emit("join", userName.trim() || "Stranger");
   };
 
-  const handleChatStop = () => {
-    socket.emit("stop");
+  const clearCurrentMatch = (nextStatus: CallStatus) => {
     cleanupPeerConnection();
-    stopLocalMedia();
     matchedUserIdRef.current = null;
     setMatchedUserId(null);
     setMatchedUserUserName("Stranger");
     setChat([]);
     setMsg("");
-    setMediaError(null);
-    setCallStatus("idle");
-    setIsChatStarted(false);
+    setCallStatus(nextStatus);
+  };
+
+  const handleFindMatch = async () => {
+    if (!localStreamRef.current) {
+      await prepareLocalMedia();
+    }
+
+    if (!localStreamRef.current) return;
+
+    clearCurrentMatch("searching");
+    socket.emit("join", userName.trim() || "Stranger");
+  };
+
+  const handleSkipMatch = () => {
+    if (!matchedUserId) {
+      void handleFindMatch();
+      return;
+    }
+
+    socket.emit("skip");
+    clearCurrentMatch("searching");
+  };
+
+  const handleHangUp = () => {
+    if (matchedUserId) {
+      socket.emit("leave-match");
+    } else if (callStatus === "searching") {
+      socket.emit("leave-queue");
+    }
+
+    clearCurrentMatch("idle");
   };
 
   const toggleMic = () => {
@@ -411,7 +480,21 @@ const App = () => {
   };
 
   if (!isChatStarted) {
-    return <StartChat onStart={() => void handleStartChat()} />;
+    return (
+      <StartChat
+        hasLocalMedia={hasLocalMedia}
+        isRequestingMedia={isRequestingMedia}
+        mediaError={mediaError}
+        isCameraEnabled={isCameraEnabled}
+        isMicEnabled={isMicEnabled}
+        isSecureContext={isSecureContext}
+        onToggleCamera={toggleCamera}
+        onToggleMic={toggleMic}
+        onRequestMedia={prepareLocalMedia}
+        onStart={() => void handleStartChat()}
+        previewRef={localVideoRef}
+      />
+    );
   }
 
   return (
@@ -426,7 +509,11 @@ const App = () => {
               <p className="font-semibold leading-tight">Megal</p>
               <div className="mt-1 flex items-center gap-2 text-sm text-zinc-500">
                 <StatusDot isLive={Boolean(matchedUserId)} />
-                {matchedUserId ? matchedUserUserName : "Searching"}
+                {matchedUserId
+                  ? matchedUserUserName
+                  : callStatus === "idle"
+                    ? "Idle"
+                    : "Searching"}
               </div>
             </div>
           </div>
@@ -455,11 +542,26 @@ const App = () => {
                     <Video className="h-7 w-7" />
                   </div>
                   <p className="text-lg font-semibold">
-                    {matchedUserId ? "Connecting video" : "Finding a stranger"}
+                    {callStatus === "idle"
+                      ? "Ready when you are"
+                      : matchedUserId
+                        ? "Connecting video"
+                        : "Finding a stranger"}
                   </p>
                   <p className="mt-2 text-sm text-zinc-400">
-                    {mediaError || "Keep this tab open while Megal pairs you."}
+                    {callStatus === "idle"
+                      ? "Start matching when you want to meet someone new."
+                      : mediaError || "Keep this tab open while Megal pairs you."}
                   </p>
+                  {callStatus === "idle" && (
+                    <button
+                      type="button"
+                      className="mt-5 min-h-11 rounded-lg bg-white px-5 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200"
+                      onClick={() => void handleFindMatch()}
+                    >
+                      Find Match
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -520,9 +622,19 @@ const App = () => {
 
               <button
                 type="button"
+                className="grid h-11 min-w-11 place-items-center rounded-full bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+                onClick={handleSkipMatch}
+                disabled={!matchedUserId && callStatus !== "idle"}
+                aria-label={matchedUserId ? "Skip stranger" : "Find match"}
+              >
+                {matchedUserId ? "Skip" : "Find"}
+              </button>
+
+              <button
+                type="button"
                 className="grid h-11 w-11 place-items-center rounded-full bg-rose-600 text-white transition hover:bg-rose-500"
-                onClick={handleChatStop}
-                aria-label="End chat"
+                onClick={handleHangUp}
+                aria-label="Hang up"
               >
                 <PhoneOff className="h-5 w-5" />
               </button>
@@ -537,7 +649,11 @@ const App = () => {
             <div className="border-b border-zinc-200 px-4 py-3">
               <p className="text-sm font-semibold">Stranger chat</p>
               <p className="text-xs text-zinc-500">
-                {matchedUserId ? "Connected" : "Waiting"}
+                {matchedUserId
+                  ? "Connected"
+                  : callStatus === "idle"
+                    ? "Idle"
+                    : "Waiting"}
               </p>
             </div>
 
@@ -547,7 +663,9 @@ const App = () => {
                   <p className="max-w-48 text-sm leading-6 text-zinc-400">
                     {matchedUserId
                       ? "No messages yet."
-                      : "Messages appear when a stranger joins."}
+                      : callStatus === "idle"
+                        ? "Tap Find Match when you are ready."
+                        : "Messages appear when a stranger joins."}
                   </p>
                 </div>
               ) : (
