@@ -5,7 +5,7 @@ import {
   removeUserFromWaitingQueue,
 } from "../WaitingUsersQueueHandler/handleWaitingQueue";
 
-const MatchedUser: Map<string, string> = new Map();
+const matchedUsers = new Map<string, string>();
 
 export const matchUser = (id: string) => {
   addUserToWaitingQueue(id);
@@ -16,23 +16,23 @@ export const matchUser = (id: string) => {
 
   const users = getUserFromWaitingQueue();
 
-  if (!users) return;
+  if (!users) return null;
 
-  MatchedUser.set(users.user1, users.user2);
-  MatchedUser.set(users.user2, users.user1);
+  matchedUsers.set(users.user1, users.user2);
+  matchedUsers.set(users.user2, users.user1);
 
   removeUserFromWaitingQueue(users.user1, users.user2);
   return users;
 };
 
 export const getMatch = (id: string) => {
-  return MatchedUser.get(id);
+  return matchedUsers.get(id);
 };
 
 export const removeUserFromMatch = (id: string) => {
-  MatchedUser.delete(id);
+  matchedUsers.delete(id);
 };
 
 export const printMatch = () => {
-  console.log(MatchedUser);
+  console.log(matchedUsers);
 };

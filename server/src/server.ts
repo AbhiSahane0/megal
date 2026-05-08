@@ -2,28 +2,27 @@ import app from "./app";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { CreateSocketConnection } from "./socket.io/CreateSocketConnection";
+
+const port = process.env.PORT || 3000;
+const allowedOrigin =
+  process.env.NODE_ENV === "development"
+    ? "*"
+    : process.env.CLIENT_ORIGIN || "https://megal-seven.vercel.app";
+
 // creating new server
 const server = createServer(app);
 
-// creating new socket.io server
-let origin =
-  process.env.NODE_ENV === "development"
-    ? "*"
-    : "https://megal-seven.vercel.app";
-
 const io = new Server(server, {
   cors: {
-    origin: origin,
-
-    methods: ["GET,HEAD,PUT,PATCH,POST,DELETE"],
-    // credentials: true,
+    origin: allowedOrigin,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
   },
 });
 
 CreateSocketConnection(io);
 
-server.listen(process.env.PORT || 3000, () => {
-  console.log("Server listening on port 3000");
+server.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
 });
 
 export { io, server };

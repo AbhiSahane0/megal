@@ -13,3 +13,7 @@ export const setUsernameMapping = ({
 export const getMappedUserName = ({ id }: { id: string }) => {
   return userNameMapping.get(id);
 };
+
+export const removeUsernameMapping = ({ id }: { id: string }) => {
+  userNameMapping.delete(id);
+};

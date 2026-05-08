@@ -1,13 +1,13 @@
-let TOTAL_LIVE_USERS: string[] = [];
+const liveUsers = new Set<string>();
 
 export const addLiveUser = (id: string) => {
-  TOTAL_LIVE_USERS.push(id);
+  liveUsers.add(id);
 };
 
 export const removeUser = (id: string) => {
-  TOTAL_LIVE_USERS = TOTAL_LIVE_USERS.filter((item) => item !== id);
+  liveUsers.delete(id);
 };
 
 export const getLiveUsersCount = () => {
-  return TOTAL_LIVE_USERS.length;
+  return liveUsers.size;
 };

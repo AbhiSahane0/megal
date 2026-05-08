@@ -1,4 +1,4 @@
-import { Server, DefaultEventsMap } from "socket.io";
+import { Server } from "socket.io";
 
 import {
   addLiveUser,
@@ -13,82 +13,120 @@ import {
 import { removeUserFromWaitingQueue } from "../handlers/WaitingUsersQueueHandler/handleWaitingQueue";
 import {
   getMappedUserName,
+  removeUsernameMapping,
   setUsernameMapping,
 } from "../handlers/userNameMappingHandler/handleUsernameMapping";
 
+type SignalDescription = {
+  type: "offer" | "answer";
+  sdp?: string;
+};
+
+type IceCandidate = {
+  candidate?: string;
+  sdpMid?: string | null;
+  sdpMLineIndex?: number | null;
+  usernameFragment?: string | null;
+};
+
+type ClientToServerEvents = {
+  join: (userName: string) => void;
+  message: (data: { message: string; to: string }) => void;
+  stop: () => void;
+  "video-offer": (data: { to: string; offer: SignalDescription }) => void;
+  "video-answer": (data: { to: string; answer: SignalDescription }) => void;
+  "ice-candidate": (data: { to: string; candidate: IceCandidate }) => void;
+};
+
+type ServerToClientEvents = {
+  liveUserCount: (count: number) => void;
+  me: (id: string) => void;
+  match: (id: string | null, userName?: string, shouldCreateOffer?: boolean) => void;
+  chat: (msg: string) => void;
+  MatchDisconnect: () => void;
+  "video-offer": (data: { from: string; offer: SignalDescription }) => void;
+  "video-answer": (data: { from: string; answer: SignalDescription }) => void;
+  "ice-candidate": (data: { from: string; candidate: IceCandidate }) => void;
+};
+
 export const CreateSocketConnection = (
-  io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
 ) => {
+  const emitLiveUserCount = () => {
+    io.emit("liveUserCount", getLiveUsersCount());
+  };
+
+  const emitMatch = (user1: string, user2: string) => {
+    io.to(user1).emit("match", user2, getMappedUserName({ id: user2 }), true);
+    io.to(user2).emit("match", user1, getMappedUserName({ id: user1 }), false);
+  };
+
+  const matchWaitingUser = (id: string) => {
+    const match = matchUser(id);
+    if (!match) return;
+
+    emitMatch(match.user1, match.user2);
+  };
+
+  const endUserSession = (socketId: string) => {
+    removeUser(socketId);
+    removeUserFromWaitingQueue(socketId);
+    removeUsernameMapping({ id: socketId });
+
+    const matchedUserId = getMatch(socketId);
+    removeUserFromMatch(socketId);
+    emitLiveUserCount();
+
+    if (!matchedUserId) return;
+
+    removeUserFromMatch(matchedUserId);
+    io.to(matchedUserId).emit("match", null);
+    io.to(matchedUserId).emit("MatchDisconnect");
+    matchWaitingUser(matchedUserId);
+  };
+
   io.on("connection", (socket) => {
     socket.on("join", (userName) => {
+      const currentMatch = getMatch(socket.id);
+      if (currentMatch) {
+        emitMatch(socket.id, currentMatch);
+        return;
+      }
+
+      removeUserFromWaitingQueue(socket.id);
       addLiveUser(socket.id);
       socket.emit("me", socket.id);
 
-      io.emit("liveUserCount", getLiveUsersCount());
+      emitLiveUserCount();
 
-      setUsernameMapping({ id: socket.id, userName });
+      setUsernameMapping({ id: socket.id, userName: userName || "Stranger" });
 
-      const match = matchUser(socket.id);
+      matchWaitingUser(socket.id);
+    });
 
-      if (match) {
-        const { user1, user2 } = match;
+    socket.on("message", (data) => {
+      io.to(data.to).emit("chat", data.message);
+    });
 
-        io.to(user2).emit("match", user1, getMappedUserName({ id: user1 }));
-        io.to(user1).emit("match", user2, getMappedUserName({ id: user2 }));
-      }
+    socket.on("video-offer", ({ to, offer }) => {
+      io.to(to).emit("video-offer", { from: socket.id, offer });
+    });
 
-      socket.on("message", (data) => {
-        io.to(data.to).emit("chat", data.message);
-      });
+    socket.on("video-answer", ({ to, answer }) => {
+      io.to(to).emit("video-answer", { from: socket.id, answer });
+    });
+
+    socket.on("ice-candidate", ({ to, candidate }) => {
+      io.to(to).emit("ice-candidate", { from: socket.id, candidate });
     });
 
     // On user disconnect
     socket.on("disconnect", () => {
-      removeUser(socket.id);
-      removeUserFromWaitingQueue(socket.id);
-      const disconnectedUserId = socket.id;
-      const matchUserId = getMatch(socket.id);
-      io.to(matchUserId!).emit("match", null);
-      io.to(matchUserId!).emit("MatchDisconnect");
-
-      io.emit("liveUserCount", getLiveUsersCount());
-      if (!matchUserId) return;
-
-      removeUserFromMatch(disconnectedUserId);
-      removeUserFromMatch(matchUserId);
-
-      const match = matchUser(matchUserId);
-      io.to(matchUserId).emit("match", null);
-
-      if (!match) return;
-
-      const { user1, user2 } = match;
-      io.to(user1).emit("match", user2, getMappedUserName({ id: user2 }));
-      io.to(user2).emit("match", user1, getMappedUserName({ id: user1 }));
+      endUserSession(socket.id);
     });
 
     socket.on("stop", () => {
-      removeUser(socket.id);
-      removeUserFromWaitingQueue(socket.id);
-      const disconnectedUserId = socket.id;
-      const matchUserId = getMatch(socket.id);
-      io.to(matchUserId!).emit("match", null);
-      io.to(matchUserId!).emit("MatchDisconnect");
-
-      io.emit("liveUserCount", getLiveUsersCount());
-      if (!matchUserId) return;
-
-      removeUserFromMatch(disconnectedUserId);
-      removeUserFromMatch(matchUserId);
-
-      const match = matchUser(matchUserId);
-      io.to(matchUserId).emit("match", null);
-
-      if (!match) return;
-
-      const { user1, user2 } = match;
-      io.to(user1).emit("match", user2, getMappedUserName({ id: user2 }));
-      io.to(user2).emit("match", user1, getMappedUserName({ id: user1 }));
+      endUserSession(socket.id);
     });
 
     // emit an event of live users updated count when new user connects
