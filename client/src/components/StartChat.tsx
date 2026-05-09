@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { FormEvent, RefObject } from "react";
-import { Camera, CameraOff, Mic, MicOff, Video, VideoOff } from "lucide-react";
+import { Camera, CameraOff, Mic, MicOff, VideoOff } from "lucide-react";
 
 type StartChatProps = {
   hasLocalMedia: boolean;
@@ -54,9 +54,7 @@ const StartChat = ({
               Check camera and microphone
             </p>
           </div>
-          <div className="grid h-11 w-11 place-items-center rounded-lg bg-zinc-950 text-white">
-            <Video className="h-5 w-5" />
-          </div>
+          <img src="/favicon.svg" alt="" className="h-11 w-11 rounded-lg" />
         </div>
 
         <div className="relative overflow-hidden rounded-lg bg-zinc-950">

@@ -521,9 +521,11 @@ const App = () => {
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-4 sm:px-6">
         <header className="flex flex-col gap-3 py-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-lg bg-zinc-950 text-base font-semibold text-white">
-              M
-            </div>
+            <img
+              src="/favicon.svg"
+              alt=""
+              className="h-10 w-10 rounded-lg"
+            />
             <div>
               <p className="font-semibold leading-tight">Megal</p>
               <div className="mt-1 flex items-center gap-2 text-sm text-zinc-500">
