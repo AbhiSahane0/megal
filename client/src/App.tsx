@@ -45,6 +45,7 @@ const App = () => {
   const [matchedUserUserName, setMatchedUserUserName] = useState("Stranger");
   const [msg, setMsg] = useState("");
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [isStrangerTyping, setIsStrangerTyping] = useState(false);
   const [isChatStarted, setIsChatStarted] = useState(false);
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [hasLocalMedia, setHasLocalMedia] = useState(false);
@@ -64,6 +65,8 @@ const App = () => {
   const matchedUserIdRef = useRef<string | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const mediaRequestRef = useRef<Promise<void> | null>(null);
+  const typingTimeoutRef = useRef<number | null>(null);
+  const isTypingRef = useRef(false);
   const userName = useUserName((state) => state.userName);
 
   const canSend = useMemo(
@@ -267,6 +270,27 @@ const App = () => {
     [createPeerConnection],
   );
 
+  const clearTypingTimeout = useCallback(() => {
+    if (!typingTimeoutRef.current) return;
+    window.clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = null;
+  }, []);
+
+  const emitTyping = useCallback(
+    (isTyping: boolean) => {
+      const matchedUser = matchedUserIdRef.current;
+      if (!matchedUser || isTypingRef.current === isTyping) return;
+
+      isTypingRef.current = isTyping;
+      socket.emit("typing", { to: matchedUser, isTyping });
+
+      if (!isTyping) {
+        clearTypingTimeout();
+      }
+    },
+    [clearTypingTimeout],
+  );
+
   useEffect(() => {
     if (localVideoRef.current && localStreamRef.current) {
       localVideoRef.current.srcObject = localStreamRef.current;
@@ -281,11 +305,13 @@ const App = () => {
       matchedName?: string,
       shouldCreateOffer = false,
     ) => {
+      emitTyping(false);
       cleanupPeerConnection();
       matchedUserIdRef.current = id;
       setMatchedUserId(id);
       setMatchedUserUserName(matchedName || "Stranger");
       setChat([]);
+      setIsStrangerTyping(false);
       setCallStatus(id ? "connecting" : "searching");
 
       if (!id) return;
@@ -301,11 +327,25 @@ const App = () => {
     };
 
     const handleChat = (incomingMessage: string) => {
+      setIsStrangerTyping(false);
       setChat((prev) => [...prev, createMessage(incomingMessage, "stranger")]);
+    };
+
+    const handleTyping = ({
+      from,
+      isTyping,
+    }: {
+      from: string;
+      isTyping: boolean;
+    }) => {
+      if (from !== matchedUserIdRef.current) return;
+      setIsStrangerTyping(isTyping);
     };
 
     const handleMatchDisconnect = () => {
       cleanupPeerConnection();
+      setIsStrangerTyping(false);
+      emitTyping(false);
       setCallStatus("searching");
       toast("Stranger left. Finding a new match.", {
         type: "error",
@@ -382,6 +422,7 @@ const App = () => {
     socket.on("liveUserCount", handleLiveUserCount);
     socket.on("match", handleMatch);
     socket.on("chat", handleChat);
+    socket.on("typing", handleTyping);
     socket.on("MatchDisconnect", handleMatchDisconnect);
     socket.on("video-offer", handleVideoOffer);
     socket.on("video-answer", handleVideoAnswer);
@@ -391,6 +432,7 @@ const App = () => {
       socket.off("liveUserCount", handleLiveUserCount);
       socket.off("match", handleMatch);
       socket.off("chat", handleChat);
+      socket.off("typing", handleTyping);
       socket.off("MatchDisconnect", handleMatchDisconnect);
       socket.off("video-offer", handleVideoOffer);
       socket.off("video-answer", handleVideoAnswer);
@@ -400,6 +442,7 @@ const App = () => {
     cleanupPeerConnection,
     createAndSendOffer,
     createPeerConnection,
+    emitTyping,
     flushPendingIceCandidates,
   ]);
 
@@ -409,10 +452,12 @@ const App = () => {
 
   useEffect(() => {
     return () => {
+      clearTypingTimeout();
+      emitTyping(false);
       cleanupPeerConnection();
       stopLocalMedia();
     };
-  }, [cleanupPeerConnection, stopLocalMedia]);
+  }, [clearTypingTimeout, cleanupPeerConnection, emitTyping, stopLocalMedia]);
 
   const handleMessageSubmit = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
@@ -420,9 +465,27 @@ const App = () => {
     const messageText = msg.trim();
     if (!matchedUserId || !messageText) return;
 
+    emitTyping(false);
     setChat((prev) => [...prev, createMessage(messageText, "me")]);
     setMsg("");
     socket.emit("message", { message: messageText, to: matchedUserId });
+  };
+
+  const handleMessageChange = (value: string) => {
+    setMsg(value);
+
+    if (!matchedUserId) return;
+
+    if (!value.trim()) {
+      emitTyping(false);
+      return;
+    }
+
+    emitTyping(true);
+    clearTypingTimeout();
+    typingTimeoutRef.current = window.setTimeout(() => {
+      emitTyping(false);
+    }, 1200);
   };
 
   const handleStartChat = async () => {
@@ -443,6 +506,8 @@ const App = () => {
     setMatchedUserId(null);
     setMatchedUserUserName("Stranger");
     setChat([]);
+    setIsStrangerTyping(false);
+    emitTyping(false);
     setMsg("");
     setCallStatus(nextStatus);
   };
@@ -517,9 +582,10 @@ const App = () => {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f1e8] text-zinc-950">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-4 sm:px-6">
-        <header className="flex flex-col gap-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+    <main className="h-[100svh] overflow-hidden bg-[#f5f1e8] text-zinc-950">
+      <div className="mx-auto flex h-full min-h-0 max-w-7xl flex-col px-3 py-3 sm:px-6 sm:py-4">
+        <header className="shrink-0 py-1">
+          <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <img
               src="/favicon.svg"
@@ -543,15 +609,16 @@ const App = () => {
             <Users className="h-4 w-4" />
             <span>{liveUsersCount} online</span>
           </div>
+          </div>
         </header>
 
-        <section className="grid flex-1 gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="relative min-h-[68vh] overflow-hidden rounded-lg bg-zinc-950 shadow-sm">
+        <section className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(176px,32svh)] gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-none lg:gap-4 lg:py-4">
+          <div className="relative min-h-0 overflow-hidden rounded-lg bg-zinc-950 shadow-sm">
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className={`h-full min-h-[68vh] w-full object-cover transition ${
+              className={`h-full w-full object-cover transition ${
                 hasRemoteMedia ? "opacity-100" : "opacity-0"
               }`}
             />
@@ -593,7 +660,7 @@ const App = () => {
                 autoPlay
                 playsInline
                 muted
-                className={`h-28 w-20 object-cover sm:h-36 sm:w-28 ${
+                className={`h-24 w-18 object-cover sm:h-36 sm:w-28 ${
                   hasLocalMedia && isCameraEnabled ? "opacity-100" : "opacity-0"
                 }`}
               />
@@ -604,7 +671,7 @@ const App = () => {
               )}
             </div>
 
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-zinc-900/85 p-2 shadow-lg backdrop-blur">
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-zinc-900/85 p-2 shadow-lg backdrop-blur sm:bottom-4">
               <button
                 type="button"
                 className={`grid h-11 w-11 place-items-center rounded-full transition ${
@@ -666,11 +733,13 @@ const App = () => {
             </div>
           </div>
 
-          <aside className="flex min-h-[48vh] flex-col rounded-lg border border-zinc-200 bg-white shadow-sm lg:min-h-0">
-            <div className="border-b border-zinc-200 px-4 py-3">
+          <aside className="flex min-h-0 flex-col rounded-lg border border-zinc-200 bg-white shadow-sm">
+            <div className="shrink-0 border-b border-zinc-200 px-4 py-3">
               <p className="text-sm font-semibold">Stranger chat</p>
               <p className="text-xs text-zinc-500">
-                {matchedUserId
+                {isStrangerTyping
+                  ? "...Typing"
+                  : matchedUserId
                   ? "Connected"
                   : callStatus === "idle"
                     ? "Idle"
@@ -678,7 +747,7 @@ const App = () => {
               </p>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
               {chat.length === 0 ? (
                 <div className="grid h-full min-h-52 place-items-center text-center">
                   <p className="max-w-48 text-sm leading-6 text-zinc-400">
@@ -713,7 +782,7 @@ const App = () => {
             </div>
 
             <form
-              className="flex items-center gap-2 border-t border-zinc-200 p-3"
+              className="shrink-0 flex items-center gap-2 border-t border-zinc-200 p-3"
               onSubmit={handleMessageSubmit}
             >
               <input
@@ -721,7 +790,7 @@ const App = () => {
                 placeholder={matchedUserId ? "Message" : "Waiting"}
                 className="min-h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none transition placeholder:text-zinc-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-zinc-100"
                 value={msg}
-                onChange={(event) => setMsg(event.target.value)}
+                onChange={(event) => handleMessageChange(event.target.value)}
                 disabled={!matchedUserId}
               />
 

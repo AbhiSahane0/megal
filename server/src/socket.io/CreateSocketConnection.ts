@@ -32,6 +32,7 @@ type IceCandidate = {
 type ClientToServerEvents = {
   join: (userName: string) => void;
   message: (data: { message: string; to: string }) => void;
+  typing: (data: { to: string; isTyping: boolean }) => void;
   stop: () => void;
   skip: () => void;
   "leave-match": () => void;
@@ -46,6 +47,7 @@ type ServerToClientEvents = {
   me: (id: string) => void;
   match: (id: string | null, userName?: string, shouldCreateOffer?: boolean) => void;
   chat: (msg: string) => void;
+  typing: (data: { from: string; isTyping: boolean }) => void;
   MatchDisconnect: () => void;
   "video-offer": (data: { from: string; offer: SignalDescription }) => void;
   "video-answer": (data: { from: string; answer: SignalDescription }) => void;
@@ -148,6 +150,10 @@ export const CreateSocketConnection = (
 
     socket.on("message", (data) => {
       io.to(data.to).emit("chat", data.message);
+    });
+
+    socket.on("typing", ({ to, isTyping }) => {
+      io.to(to).emit("typing", { from: socket.id, isTyping });
     });
 
     socket.on("video-offer", ({ to, offer }) => {
