@@ -39,6 +39,8 @@ const StatusDot = ({ isLive }: { isLive: boolean }) => (
   />
 );
 
+const MIC_GAIN = 1.7;
+
 const App = () => {
   const [liveUsersCount, setLiveUsersCount] = useState(0);
   const [matchedUserId, setMatchedUserId] = useState<string | null>(null);
@@ -60,8 +62,10 @@ const App = () => {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const rawLocalStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const matchedUserIdRef = useRef<string | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const mediaRequestRef = useRef<Promise<void> | null>(null);
@@ -88,12 +92,64 @@ const App = () => {
 
   const stopLocalMedia = useCallback(() => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    rawLocalStreamRef.current?.getTracks().forEach((track) => track.stop());
+    void audioContextRef.current?.close();
     localStreamRef.current = null;
+    rawLocalStreamRef.current = null;
+    audioContextRef.current = null;
     setHasLocalMedia(false);
     setIsRequestingMedia(false);
 
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const createProcessedMediaStream = useCallback((stream: MediaStream) => {
+    const audioTrack = stream.getAudioTracks()[0];
+    const videoTracks = stream.getVideoTracks();
+
+    if (!audioTrack) return stream;
+
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (
+          window as Window &
+            typeof globalThis & { webkitAudioContext?: typeof AudioContext }
+        ).webkitAudioContext;
+      if (!AudioContextClass) return stream;
+
+      const audioContext = new AudioContextClass();
+      const source = audioContext.createMediaStreamSource(
+        new MediaStream([audioTrack]),
+      );
+      const gain = audioContext.createGain();
+      const compressor = audioContext.createDynamicsCompressor();
+      const destination = audioContext.createMediaStreamDestination();
+
+      gain.gain.value = MIC_GAIN;
+      compressor.threshold.value = -28;
+      compressor.knee.value = 22;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.005;
+      compressor.release.value = 0.2;
+
+      source.connect(gain);
+      gain.connect(compressor);
+      compressor.connect(destination);
+
+      audioContextRef.current = audioContext;
+
+      const processedAudioTrack = destination.stream.getAudioTracks()[0];
+      if (!processedAudioTrack) return stream;
+
+      processedAudioTrack.enabled = audioTrack.enabled;
+
+      return new MediaStream([...videoTracks, processedAudioTrack]);
+    } catch (error) {
+      console.warn("Audio boost pipeline unavailable; using raw microphone.", error);
+      return stream;
     }
   }, []);
 
@@ -124,13 +180,14 @@ const App = () => {
           throw new Error("Camera and microphone are required.");
         }
 
-        localStreamRef.current = stream;
+        rawLocalStreamRef.current = stream;
+        localStreamRef.current = createProcessedMediaStream(stream);
         setHasLocalMedia(true);
         setIsMicEnabled(true);
         setIsCameraEnabled(true);
 
         if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.srcObject = localStreamRef.current;
         }
       } catch (error) {
         const message =
@@ -153,7 +210,7 @@ const App = () => {
 
     mediaRequestRef.current = requestMedia();
     return mediaRequestRef.current;
-  }, []);
+  }, [createProcessedMediaStream]);
 
   const flushPendingIceCandidates = useCallback(async () => {
     const pc = peerConnectionRef.current;

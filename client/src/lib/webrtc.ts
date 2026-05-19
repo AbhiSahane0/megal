@@ -34,6 +34,7 @@ export const mediaConstraints: MediaStreamConstraints = {
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
+    channelCount: 1,
   },
   video: {
     width: { ideal: 1280 },
